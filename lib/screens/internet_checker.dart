@@ -2,9 +2,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:tambay/screens/no_internet_screen.dart';
-import 'package:webview_flutter/webview_flutter.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:http/http.dart' as http;
-// import 'package:url_launcher/url_launcher.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class ConnectionChecker extends StatefulWidget {
   const ConnectionChecker({super.key});
@@ -16,8 +16,8 @@ class ConnectionChecker extends StatefulWidget {
 class _ConnectionCheckerState extends State<ConnectionChecker> {
   late final StreamSubscription<List<ConnectivityResult>> subscription;
   bool hasInternet = false;
-  late final WebViewController _controller;
   bool pageReachable = false;
+  InAppWebViewController? webViewController;
 
   Future<bool> _showExitConfirmationDialog(BuildContext context) async {
     return await showDialog<bool>(
@@ -43,10 +43,6 @@ class _ConnectionCheckerState extends State<ConnectionChecker> {
   @override
   void initState() {
     super.initState();
-
-    _controller = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..loadRequest(Uri.parse('https://tambay.co'));
 
     _checkConnection();
 
@@ -78,8 +74,10 @@ class _ConnectionCheckerState extends State<ConnectionChecker> {
         setState(() {
           pageReachable = true;
         });
-        if (reload) {
-          _controller.loadRequest(Uri.parse('https://tambay.co'));
+        if (reload && webViewController != null) {
+          webViewController!.loadUrl(
+            urlRequest: URLRequest(url: WebUri('https://tambay.co')),
+          );
         }
       }
     } catch (_) {
@@ -107,18 +105,43 @@ class _ConnectionCheckerState extends State<ConnectionChecker> {
     if (hasInternet) {
       return WillPopScope(
         onWillPop: () async {
-          if (await _controller.canGoBack()) {
-            // Go back inside WebView history
-            _controller.goBack();
+          if (webViewController != null &&
+              await webViewController!.canGoBack()) {
+            webViewController!.goBack();
             return false; // don’t exit app
           } else {
-            // Show exit confirmation if no history left
             final confirmExit = await _showExitConfirmationDialog(context);
             return confirmExit; // true = exit
           }
         },
         child: Scaffold(
-          body: SafeArea(child: WebViewWidget(controller: _controller)),
+          body: SafeArea(
+            child: InAppWebView(
+              initialUrlRequest: URLRequest(url: WebUri('https://tambay.co')),
+              onWebViewCreated: (controller) {
+                webViewController = controller;
+              },
+              shouldOverrideUrlLoading: (controller, navigationAction) async {
+                final url = navigationAction.request.url.toString();
+                debugPrint("Intercepted: $url");
+
+                if (url.contains("instagram.com") ||
+                    url.contains("facebook.com") ||
+                    url.contains("fb.com")) {
+                  // Open Instagram externally instead of inside WebView
+                  if (await canLaunchUrl(Uri.parse(url))) {
+                    await launchUrl(
+                      Uri.parse(url),
+                      mode: LaunchMode.externalApplication,
+                    );
+                  }
+                  return NavigationActionPolicy.CANCEL;
+                }
+
+                return NavigationActionPolicy.ALLOW;
+              },
+            ),
+          ),
         ),
       );
     } else {
