@@ -5,6 +5,7 @@ import 'package:tambay/screens/no_internet_screen.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 class ConnectionChecker extends StatefulWidget {
   const ConnectionChecker({super.key});
@@ -18,6 +19,7 @@ class _ConnectionCheckerState extends State<ConnectionChecker> {
   bool hasInternet = false;
   bool pageReachable = false;
   InAppWebViewController? webViewController;
+  String _version = '';
 
   Future<bool> _showExitConfirmationDialog(BuildContext context) async {
     return await showDialog<bool>(
@@ -43,7 +45,7 @@ class _ConnectionCheckerState extends State<ConnectionChecker> {
   @override
   void initState() {
     super.initState();
-
+    _loadVersion();
     _checkConnection();
 
     subscription = Connectivity().onConnectivityChanged.listen((results) {
@@ -87,6 +89,13 @@ class _ConnectionCheckerState extends State<ConnectionChecker> {
     }
   }
 
+  Future<void> _loadVersion() async {
+    final info = await PackageInfo.fromPlatform();
+    setState(() {
+      _version = '${info.version} (${info.buildNumber})';
+    });
+  }
+
   Future<void> _checkConnection() async {
     var results = await Connectivity().checkConnectivity();
     setState(() {
@@ -116,30 +125,40 @@ class _ConnectionCheckerState extends State<ConnectionChecker> {
         },
         child: Scaffold(
           body: SafeArea(
-            child: InAppWebView(
-              initialUrlRequest: URLRequest(url: WebUri('https://tambay.co')),
-              onWebViewCreated: (controller) {
-                webViewController = controller;
-              },
-              shouldOverrideUrlLoading: (controller, navigationAction) async {
-                final url = navigationAction.request.url.toString();
-                debugPrint("Intercepted: $url");
+            child: Column(
+              children: [
+                Text("Beta Version: $_version"),
+                Expanded(
+                  child: InAppWebView(
+                    initialUrlRequest: URLRequest(
+                      url: WebUri('https://tambay.co'),
+                    ),
+                    onWebViewCreated: (controller) {
+                      webViewController = controller;
+                    },
+                    shouldOverrideUrlLoading:
+                        (controller, navigationAction) async {
+                          final url = navigationAction.request.url.toString();
+                          debugPrint("Intercepted: $url");
 
-                if (url.contains("instagram.com") ||
-                    url.contains("facebook.com") ||
-                    url.contains("fb.com")) {
-                  // Open Instagram externally instead of inside WebView
-                  if (await canLaunchUrl(Uri.parse(url))) {
-                    await launchUrl(
-                      Uri.parse(url),
-                      mode: LaunchMode.externalApplication,
-                    );
-                  }
-                  return NavigationActionPolicy.CANCEL;
-                }
+                          if (url.contains("instagram.com") ||
+                              url.contains("facebook.com") ||
+                              url.contains("fb.com")) {
+                            // Open Instagram externally instead of inside WebView
+                            if (await canLaunchUrl(Uri.parse(url))) {
+                              await launchUrl(
+                                Uri.parse(url),
+                                mode: LaunchMode.externalApplication,
+                              );
+                            }
+                            return NavigationActionPolicy.CANCEL;
+                          }
 
-                return NavigationActionPolicy.ALLOW;
-              },
+                          return NavigationActionPolicy.ALLOW;
+                        },
+                  ),
+                ),
+              ],
             ),
           ),
         ),
